@@ -139,3 +139,81 @@ MemberRepository의 경우를 보면 역활이 잘 설정되었기에 먼저 메
 정률 할인 : 고정 할인은 미리 할인 금액을 정해놓고 할인하는 것을 말한다. 정률 할인은 상품의 가격에 따라 할인 금액이 변경되는 것을 말한다.
 ```
 
+### 서비스 변경 예제) 새로운 할인 정책 개발
+
+```
+[상황]
+현재 서버는 메모리, 고정할인정책으로 구현이 완료되어있는 상태다.
+
+어느 날 기획자가 고정 할인 정책이 아닌 정률 할인 정책으로 변경하고 싶다고 말한다.
+
+개발자는 주문 객체 다이어그램을 다음과 같이 변경해야한다.
+```
+
+![](readmeImgFiles/Rate_Discount_Policy_객체_다이어그램.png)
+
+**정률 할인 정책 개발 및 테스트 결과**
+
+_개발_
+
+```java
+package hello.core.discount;
+
+import hello.core.member.Grade;
+import hello.core.member.Member;
+
+public class RateDiscountPolicy implements DiscountPolicy{
+
+    private int discountPersent = 10;
+
+    @Override
+    public int discount(Member member, int price) {
+        if (member.getGrade() == Grade.VIP) return price * discountPersent / 100;
+        else return 0;
+    }
+}
+```
+
+_테스트 코드_
+```java
+package hello.core.discount;
+
+import hello.core.member.Grade;
+import hello.core.member.Member;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+
+import static org.assertj.core.api.Assertions.*;
+
+class RateDiscountPolicyTest {
+    DiscountPolicy discountPolicy = new RateDiscountPolicy();
+
+    @Test
+    @DisplayName("VIP는 10% 할인이 적용되어야 한다")
+    void vip_o(){
+        // given
+        Member memberVIP = new Member(1L, "memberVIP", Grade.VIP);
+        // when
+        int discountPrice = discountPolicy.discount(memberVIP, 20000);
+        // then
+        assertThat(discountPrice).isEqualTo(2000);
+    }
+
+    @Test
+    @DisplayName("VIP가 아니면 할인이 적용되면 안된다")
+    void vip_x(){
+        // given
+        Member memberBasic = new Member(2L, "memberBasic", Grade.BASIC);
+        // when
+        int discountPrice = discountPolicy.discount(memberBasic, 20000);
+        // then
+        assertThat(discountPrice).isEqualTo(0);
+    }
+}
+```
+
+_테스트 결과_
+
+![](readmeImgFiles/Rate_Discount_Policy_Test_Result.png)
+
+> 위처럼 할인 정책과 같은 상황을 테스트할 때는 VIP인 경우만 테스트하면 안된다. 반드시 VIP가 아닌 경우도 테스트해야한다.
