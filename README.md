@@ -362,3 +362,39 @@ public class OrderApp {
 ```
 
 이제 직접 구현체를 넣어서 사용하는 것이 아니라 AppConfig에 있는 orderService 를 사용하게 되면 구현체(OrderServiceImpl)가 생성되고 구현체의 생성자를 통해 구현체에서 사용되고 있는 인터페이스에 구현체(MemoryMemberRepository, FixDiscountPolicy)가 설정되어 사용되는 것을 확인할 수 있다.
+
+### 다시 새로운 할인 정책 적용
+
+다시 RateDiscountPolicy 를 적용해보자. 
+
+이제 OrderServiceImpl 에서 코드를 변경할 필요가 없다.
+
+AppConfig 에서 다음과 같이 변경하면 된다.
+
+> 참고 : AppConfig 코드를 Refactoring 하였다. 자세한 사항은 [여기](https://github.com/kyeongmin-log/spring-main-point/commit/46728c16856b65786fe7f6563cb40ffb4a7ecf6b) 를 참고하자.
+
+```java
+public class AppConfig {
+...
+    public DiscountPolicy discountPolicy(){
+//        return new FixDiscountPolicy();
+        return new RateDiscountPolicy();
+    }
+}
+```
+
+THIS IS VERY SIMPLE!
+
+OrderServiceImpl 코드는 하나도 안건드리면서 할인 정책을 변경하였다.
+
+> Q. AppConfig 을 변경하였는데요?
+
+A. 개발자는 극한의 상황을 생각해야한다. 만약 orderService 를 사용하는 클래스가 1억개 있다고 생각해보자. 1억개를 AppConfig을 사용하지 않고 각 구현체에서 직접 할당하여 사용하였다.
+
+약 1년간 고정 할인으로 서비스하다가 어느 날 회의 시간에 기획자가 말한다. '저희 이제 고정 할인이 아니라 정률 할인으로 갈거에요.' AppConfig 을 사용하지 않은 개발자는 생각한다. 'What the...F...F...F.'. RateDiscountPolicy 를 만들고 1초에 한 개의 구현체를 바꾼다고 해도 1억 초라는 시간이 걸린다. 야근 확정이다.
+
+AppConfig 을 사용한 개발자는 바로 RateDiscountPolicy 를 짜서 1초 만에 변경한다. 1억 개의 구현체가 한 번에 바뀌고 칼퇴근을 한다.
+
+극단적인 예였지만 실무에서는 복잡한 경우의 수로 생각보다 이런 일이 종종 생긴다. 
+
+따라서, 실행하는 역활과 객체를 생성하고 할당하는 역활를 구분하는 것은 매우 중요하다. 
