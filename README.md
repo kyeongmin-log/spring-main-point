@@ -6,6 +6,14 @@
 
 - 먼저 스프링을 쓰지 않고 순수 자바를 통해 예제를 설계 및 구현해보고 스프링에 핵심 요소들을 적용해가며 스프링을 이해한다.
 
+# 객체 지향의 5가지 원칙(SOLID)
+
+[객체 지향의 5가지 원칙(SOLID) ](https://github.com/kyeongmin-log/spring-main-point/wiki/%EA%B0%9D%EC%B2%B4%EC%A7%80%ED%96%A5-5%EA%B0%80%EC%A7%80-%EC%9B%90%EC%B9%99)
+
+글로 이해하기보단 실제로 사용해보면 이해하자. 
+
+실제로 사용하고 다시 글을 보면 더 쉽게 이해할 수 있다.
+
 # 예제
 
 - 순수 자바로 회원, 주문, 할인 도메인을 설계 및 구현해본다.
@@ -157,11 +165,7 @@ MemberRepository의 경우를 보면 역활이 잘 설정되었기에 먼저 메
 _개발_
 
 ```java
-package hello.core.discount;
-
-import hello.core.member.Grade;
-import hello.core.member.Member;
-
+...
 public class RateDiscountPolicy implements DiscountPolicy{
 
     private int discountPersent = 10;
@@ -176,15 +180,7 @@ public class RateDiscountPolicy implements DiscountPolicy{
 
 _테스트 코드_
 ```java
-package hello.core.discount;
-
-import hello.core.member.Grade;
-import hello.core.member.Member;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-
-import static org.assertj.core.api.Assertions.*;
-
+...
 class RateDiscountPolicyTest {
     DiscountPolicy discountPolicy = new RateDiscountPolicy();
 
@@ -217,3 +213,162 @@ _테스트 결과_
 ![](readmeImgFiles/Rate_Discount_Policy_Test_Result.png)
 
 > 위처럼 할인 정책과 같은 상황을 테스트할 때는 VIP인 경우만 테스트하면 안된다. 반드시 VIP가 아닌 경우도 테스트해야한다.
+
+### 새로운 할인 정책 개발 시 문제점?
+
+> 위 처럼 개발하는 것이 좋은 방법일까?
+
+당연히 Nope. 왜 그런지 보기 전에 구현한 코드를 실제로 사용해보아야한다.
+
+구현한 코드를 사용하면 다음과 같다.
+
+```java
+...
+ public class OrderServiceImpl implements OrderService{
+
+    private final MemberRepository memberRepository = new MemoryMemberRepository();
+    private final DiscountPolicy discountPolicy = new RateDiscountPolicy();
+    //private final DiscountPolicy discountPolicy = new FixDiscountPolicy();
+...
+```
+
+FixDiscountPolicy() => RateDiscountPolicy() 으로 바꿔주면 코드는 문제없이 돌아간다. 
+
+또한, 실제 내가 생각한대로 서비스가 돌아간다.
+
+인터페이스와 구현체를 잘 구분하여 객체 지향 프로그래밍의 핵심인 다형성도 적절히 활용한 거 같다.
+
+그럼 무엇이 문제일까?
+
+```
+문제는 할인 정책을 변경하려면 OrderServiceImpl 을 수정해야한다는 것과 
+인터페이스와 구현체를 적절히 구분하여 사용한 거 같지만 실제론 그렇지 않다는 점에 있다.
+
+먼저 개발하려고한 생각한 주문 도메인 클래스 다이어그램을 먼저 보자.
+```
+
+![](readmeImgFiles/주문_도메인_클래스_다이어그램.png)
+
+```
+클래스 다이어그램을 보면 알 수 있듯이 
+OrderServiceImpl 은 DiscountPolicy 라는 인터페이스만 의존하여 개발되어야 하는데 
+현재는 다음과 같이 의존하여 개발하고 있다.
+```
+
+![](readmeImgFiles/OrderServiceImpl_의존.png)
+
+위 그림과 다른점이 보이는가?
+
+내가 만든 OrderServiceImpl 은 DiscountPolicy 라는 인터페이스만 의존한 것이 아닌 FixDiscountPolicy, RateDiscountPolicy 라는 구현체에도 의존한 것을 볼 수 있으며, Fix => Rate 로 바꾸기위해 OrderServiceImpl 에서 코드를 변경하였다.
+
+이는 객체 지향의 5가지 원칙(SOLID) 중 OCP, DIP 규칙에 어긋난다고 볼 수 있다.
+
+> 규칙이 기억이 안날 수 있다. [객체 지향의 5가지 원칙(SOLID) ](https://github.com/kyeongmin-log/spring-main-point/wiki/%EA%B0%9D%EC%B2%B4%EC%A7%80%ED%96%A5-5%EA%B0%80%EC%A7%80-%EC%9B%90%EC%B9%99) 을 읽고 오자.
+
+### 그럼 문제를 어떻게 해결할 수 있을까?
+
+문제는 OrderServiceImpl 에서 DiscountPolicy 의 구현체를 변경하면서 시작된다.
+
+그럼 해결 방법은 간단하다! 구현체를 없애면 된다.
+
+다음과 같이 코드를 짤 수 있다.
+
+```java
+...
+ public class OrderServiceImpl implements OrderService{
+
+    private final MemberRepository memberRepository = new MemoryMemberRepository();
+    private final DiscountPolicy discountPolicy;
+...
+```
+
+This is very simple!
+
+...But 이렇게 짜면 코드는 당연히 에러를 발생시킨다.
+
+Why? 구현체가 없으니 discountPolicy 를 호출하면 Null 값 밖에 없으므로 NullPointException 이 발생한다.
+
+그럼 다시 전으로 돌아가야할까? Nope. 우리는 다음 단계로 가기 위해 AppConfing 클래스를 사용할거다.
+
+### AppConfig Class?
+
+어떻게 구현체없이 인터페이스를 사용할 수 있을까?
+
+다음과 같이 생각해보자.
+
+> 미리 인터페이스에 구현체를 넣어놓고 가져와서 사용하자!
+
+이것을 가능하게 하기 위해 AppConfig 이라는 클래스를 사용할 것이다.
+
+AppConfig 클래스는 다음과 같이 작성할 수 있다. (MemberRepository도 같이 변경하였다.)
+
+```java
+...
+public class AppConfig {
+
+    public MemberService memberService(){
+        return new MemberServiceImpl(new MemoryMemberRepository());
+    }
+
+    public OrderService orderService(){
+        return new OrderServiceImpl(new MemoryMemberRepository(), new FixDiscountPolicy());
+    }
+}
+```
+
+코드를 보면 인터페이스에 구현체를 미리 넣어놓고 구현체(OrderServiceImpl) 안에 있는 인터페이스에 구현체를 넣기 위해 생성자를 사용하고 있다. 
+
+AppConfig 을 사용하기 위해 OrderServiceImpl를 다음과 같이 변경해보자.
+
+```java
+...
+public class OrderServiceImpl implements OrderService{
+
+    private final MemberRepository memberRepository;
+    private final DiscountPolicy discountPolicy;
+
+    public OrderServiceImpl(MemberRepository memberRepository, DiscountPolicy discountPolicy) {
+        this.memberRepository = memberRepository;
+        this.discountPolicy = discountPolicy;
+    }
+...
+```
+
+짠! 
+
+생성자를 이용하여 어딘가에서 OrderService 를 이용하면 OrderService 의 구현체인 OrderServiceImpl 에 생성자를 부르게되고 생성자를 통해 DiscountPolicy 의 구현체가 FixDiscountPolicy 로 설정된다! (Amazing!)
+
+> 이처럼 생성자를 통해 의존 관계를 설정(주입)하는 것을 생성자 주입이라고 한다.
+
+이제 FixDiscountPolicy 를 사용하다가 RateDiscountPolicy 로 변경하여도 OrderServiceImpl 클래스는 아무런 변경이 필요없다. 단지, AppConfig 에서 구현체만 변경해주면 된다.
+
+즉, OrderServiceImpl 는 실행하는 역활만 맡게 되고 객체를 생성하거나 연결하는 역활은 AppConfig 이 맡게 된다. 관심사가 명확하게 분리된 것을 볼 수 있다.
+
+AppConfig 을 이용하여 간단하게 사용해보면 다음과 같이 사용할 수 있다.
+
+```java
+...
+public class OrderApp {
+    public static void main(String[] args) {
+        /** 이전에 사용한 방식
+        MemberService memberService = new MemberServiceImpl();
+        OrderService orderService = new OrderServiceImpl();
+        */
+        // AppConfig 을 사용한 방식
+        AppConfig appConfig = new AppConfig();
+        MemberService memberService = appConfig.memberService();
+        OrderService orderService = appConfig.orderService();
+
+        Member member = new Member(1L, "memberA", Grade.VIP);
+        memberService.join(member);
+
+        Member findMember = memberService.findMember(member.getId());
+        Order order = orderService.createOrder(findMember.getId(),"itemA", 10000);
+
+        System.out.println("order = " + order);
+        System.out.println("order.calculatePrice() = " + order.calculatePrice());
+    }
+}
+```
+
+이제 직접 구현체를 넣어서 사용하는 것이 아니라 AppConfig에 있는 orderService 를 사용하게 되면 구현체(OrderServiceImpl)가 생성되고 구현체의 생성자를 통해 구현체에서 사용되고 있는 인터페이스에 구현체(MemoryMemberRepository, FixDiscountPolicy)가 설정되어 사용되는 것을 확인할 수 있다.
