@@ -397,4 +397,95 @@ AppConfig 을 사용한 개발자는 바로 RateDiscountPolicy 를 짜서 1초 �
 
 극단적인 예였지만 실무에서는 복잡한 경우의 수로 생각보다 이런 일이 종종 생긴다. 
 
-따라서, 실행하는 역활과 객체를 생성하고 할당하는 역활를 구분하는 것은 매우 중요하다. 
+따라서, 실행하는 역활과 객체를 생성하고 할당하는 역활를 구분하는 것은 매우 중요하다.
+
+# 스프링으로 전환하기
+
+지금까지 순수 자바로 개발을 진행하였다.
+
+이제 스프링으로 전환해보자.
+
+전환하기 전에 DI(Dependency Injection)을 간단하게 알아보자.
+
+>**DI?**
+
+어렵게 생각하지말자. AppConfig 과 같이 동작하는 방식을 DI라고 한다. 외부에서 구현체를 넣어주는거다.
+
+이런 방식들을 한 공간에 넣어놓은 것을 DI Container 라고 부른다.
+
+한국어로 바꾸면 "의존성 주입 공간". 뭔가 이상하긴한데 어렵지 않다. 단순하게 외부에서 구현체를 넣고 이런게 여러 개 있으며 그것을 모아놓은 공간! 이라고 생각해자.
+
+## AppConfig 설정
+
+AppConfig Class 에 다음과 같이 추가한다.
+
+```java
+...
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+public class AppConfig {
+
+    @Bean
+    public MemberService memberService(){
+        return new MemberServiceImpl(memberRepository());
+    }
+...
+```
+
+나머지 3개의 method 에도 @Bean 을 붙여보자.
+
+@Configuration? @Bean? 해당 Annotation 을 알아보기 전에 먼저 써보자. 100번 읽기보다 1번 해보는 것이 이해하기 더 좋다. 
+
+>**MemberApp을 다음과 같이 변경**
+
+```java
+...
+public class MemberApp {
+    public static void main(String[] args) {
+        /** 기존 방식
+         * AppConfig appConfig = new AppConfig();
+         * MemberService memberService = appConfig.memberService();
+         * */
+        ApplicationContext applicationContext = new AnnotationConfigApplicationContext(AppConfig.class);
+        MemberService memberService = applicationContext.getBean("memberService", MemberService.class);
+        Member member = new Member(1L, "memberA", Grade.VIP);
+        memberService.join(member);
+...
+```
+
+여기서 ApplicationContext 을 '스프링 컨테이너'라고 한다.
+
+기존에는 개발자가 AppConfig 을 사용하여 객체를 생성하여 DI를 했지만, 이제부터는 스프링 컨테이너를 사용한다.
+
+스프링 컨테이너는 @Configuration 이 붙은 AppConfig 을 설정(구성) 정보로 사용한다. 여기서 @Bean 이라고 적힌 method 를 모두 호출하여 반환된 객체를 스프링 컨테이너에 등록한다.
+
+이렇게 스프링 컨테이너에 등록된 객체를 '스프링 빈'이라고 한다.
+
+스프링 빈은 @Bean 이 붙은 method 의 이름을 스프링 빈의 이름으로 사용한다.(위 코드에서 보면 memberService)
+
+이전에 개발자는 필요한 객체를 AppConfig 을 이용하여 직접 조회했지만, 이제부터는 스프링 컨테이너를 통해서 필요한 객체(스프링 빈)를 찾을 수 있다.
+
+applicationContext.getBean() method를 사용하여 필요한 객체(스프링 빈)를 가져올 수 있다.
+
+이제 OrderApp 도 동일하게 변경해보자. (코드를 보기 전에 직접 해보자.)
+
+> OrderApp 변경
+
+```java
+...
+public class OrderApp {
+    public static void main(String[] args) {
+        /** 기존 방식
+         * AppConfig appConfig = new AppConfig();
+         * MemberService memberService = appConfig.memberService();
+         * OrderService orderService = appConfig.orderService();
+         * */
+        ApplicationContext applicationContext = new AnnotationConfigApplicationContext(AppConfig.class);
+        MemberService memberService = applicationContext.getBean("memberService", MemberService.class);
+        OrderService orderService = applicationContext.getBean("orderService", OrderService.class);
+...
+```
+
+기존과 동일하게 동작하지만 기존에는 개발자가 직접 자바 코드로 모든 것을 했다면 이제부터는 스프링 컨테이너에 객체(스프링 빈)를 등록하고, 스프링 컨테이너에서 객체(스프링 빈)를 찾아서 사용하도록 변경되었다!
