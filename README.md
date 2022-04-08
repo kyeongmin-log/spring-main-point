@@ -489,3 +489,157 @@ public class OrderApp {
 ```
 
 기존과 동일하게 동작하지만 기존에는 개발자가 직접 자바 코드로 모든 것을 했다면 이제부터는 스프링 컨테이너에 객체(스프링 빈)를 등록하고, 스프링 컨테이너에서 객체(스프링 빈)를 찾아서 사용하도록 변경되었다!
+
+# 싱글톤 패턴
+
+싱글톤 패턴이란 한 개의 객체를 생성하여 공유하여 사용할 수 있도록 설계한 것을 말한다. (클래스의 인스턴스가 딱 1개만 생성되는 것을 보장하는 디자인 패턴)
+
+## 싱글톤 패턴이 필요한 이유?
+
+다음 테스트 코드를 한 번 살펴보자. 스프링이 없는 순수한 DI 컨테이너이다. 
+
+```java
+...
+public class SingletonTest {
+
+    @Test
+    @DisplayName("스프링 없는 순수한 DI 컨테이너")
+    void pureContainer() {
+        AppConfig appConfig = new AppConfig();
+        // 1. 조회 : 호출할 때마다 객체를 생성
+        MemberService memberService1 = appConfig.memberService();
+        // 2. 조회 : 호출할 때마다 객체를 생성
+        MemberService memberService2 = appConfig.memberService();
+
+        // 참조값이 다른 것을 확인
+        System.out.println("memberService1 = " + memberService1);
+        System.out.println("memberService2 = " + memberService2);
+
+        // memberService1 != memberService2
+        Assertions.assertThat(memberService1).isNotSameAs(memberService2);
+    }
+}
+```
+
+**결과**
+```cmd
+memberService1 = hello.core.member.MemberServiceImpl@17f7cd29
+memberService2 = hello.core.member.MemberServiceImpl@7d8704ef
+```
+
+참조값을 확인해보면 서로 다른 객체로 생성된 것을 확인할 수 있다. 즉, 객체를 사용하려고 할 때마다 새로운 객체를 만드는 것이다. MemberService 는 만들어질 때 MemberRepository 도 만들어지므로 2개의 객체를 만들었을 뿐인데 4개의 객체가 생성되는 결과가 나온다.
+
+만약, 조회 서비스에서 1초에 50000개의 객체를 요청한다고 생각해보자. 위처럼 하나하나 객체를 만들어서 사용한다면 메모리 낭비가 너무 심각하다.
+
+해결방법은 무엇일까?
+
+간단하다. 동일한 객체 인스턴스가 2개 이상 생성되지 않으며 1개로 요청을 처리하면 된다. 
+
+### 동일한 객체 인스턴스가 2개 이상 생성되지 않으며 1개로 요청을 처리하도록 변경
+
+(main 이 아닌 test 에서 진행)
+
+SingletonService.class 를 만들어서 다음과 같이 작성하였다.(예제 객체 코드)
+
+```java
+...
+public class SingletonService {
+    // 1. static 영역에 객체를 딱 1개만 생성해둔다.
+    private static final SingletonService instance = new SingletonService();
+    // 2. public 으로 열어서 객체 인스턴스가 필요하면 이 static 메서드를 통해서만 조회하도록 허용한다.
+    public static SingletonService getInstance() {
+        return instance;
+    }
+    // 3. 생성자를 private 로 선언하여 외부에서 new 키워드를 통해서 생성되는 것을 막아준다.
+    private SingletonService(){}
+
+    public void logic(){
+        System.out.println("싱글톤 객체 로직 호출");
+    }
+}
+```
+
+예재로 만든 객체이다. 이제 테스트 코드(SingletonTest.class)로 넘어가서 해당 객체 인스턴스를 생성 및 사용 결과를 확인해보자.
+
+```java
+...
+    @Test
+    @DisplayName("싱글톤 패턴을 적용한 객체 사용")
+    void singletonServiceTest() {
+        SingletonService singletonService1 = SingletonService.getInstance();
+        SingletonService singletonService2 = SingletonService.getInstance();
+
+        // 참조값이 같은 것을 확인
+        System.out.println("singletonService1 = " + singletonService1);
+        System.out.println("singletonService2 = " + singletonService2);
+
+        // singletonService1 == singletonService2
+        assertThat(singletonService1).isSameAs(singletonService2);
+    }
+```
+
+**결과**
+```cmd
+singletonService1 = hello.core.singleton.SingletonService@2df9b86
+singletonService2 = hello.core.singleton.SingletonService@2df9b86
+```
+
+참조값을 확인해보면 동일한 것을 볼 수 있다! SingletoneService 내부에서 static을 통해 1개의 객체만 생성되도록 만들어놓았고 1개의 객체 인스턴스에서 getInstance() 를 통해서만 인스턴스를 가져오도록 설계하였기 때문이다.
+
+동일한 객체 인스턴스를 가져다 사용하므로 참조값이 같다.
+
+이처럼 1개의 객체 인스턴스를 공유하도록 설계한 디자인패턴을 '싱글톤 패턴'이라고 한다.
+
+### 싱글톤 패턴의 문제점
+
+싱글톤 패턴은 1개의 객체 인스턴스로 여러 개의 요청을 처리할 수 있다는 장점을 가지고 있지만 다음과 같은 문제점이 있다.
+
+**1. 싱글톤 패턴을 구현하는 코드 자체가 많이 들어간다.**
+
+구현한 코드를 살펴보자.
+
+```java
+...
+public class SingletonService {
+    // 1. static 영역에 객체를 딱 1개만 생성해둔다.
+    private static final SingletonService instance = new SingletonService();
+    // 2. public 으로 열어서 객체 인스턴스가 필요하면 이 static 메서드를 통해서만 조회하도록 허용한다.
+    public static SingletonService getInstance() {
+        return instance;
+    }
+    // 3. 생성자를 private 로 선언하여 외부에서 new 키워드를 통해서 생성되는 것을 막아준다.
+    private SingletonService(){}
+
+    public void logic(){
+        System.out.println("싱글톤 객체 로직 호출");
+    }
+}
+```
+
+우리는 SingletonService 라는 클래스에서 logic 이라는 메서드만 사용하고 싶은데 싱글톤 패턴을 적용하기 위해 위에 static으로 객체 인스턴스를 만들고 인스턴스를 반환하는 메서드를 만들고 외부에서 new 하여 생성하지 못하도록 만들어줘야한다. 글로만 적어도 logic 메서드를 사용하기 위해 너무 많은 코드가 작성된다.
+
+**2. 의존관계상 클라이언트가 구체 클래스에 의존한다. - DIP 를 위반한다.**
+
+우선 DIP 를 위반하는 코드는 다음과 같다.
+
+```java
+...
+   private static final SingletonService instance = new SingletonService();
+...
+```
+
+해당 코드를 보면 직접 구현체를 넣어서 사용되는 것을 확인할 수 있다. DIP의 핵심은 클라이언트 코드가 구체 코드에 의존하지 않고 변경하는 것을 말하는데 위에서는 직접 구현체를 넣으므로 변경이 불가능하다. 위 방식이 아닌 다른 방식을 사용하여 DIP에 위반하지 않으면서 싱글톤 패턴으로 설계하는 것이 가능은 하지만 매우 번거롭고 해당 과정에서도 많은 단점들이 나온다.
+
+**3. 클라이언트가 구체 클래스에 의존하므로 OCP 원칙도 위반할 가능성이 높다.**
+
+**4. 테스트하기 어렵다.**
+
+**5. 내부 속성을 변경하거나 초기화하기 어렵다.**
+
+**6. private 생성자로 자식 클래스를 만들기 어렵다.**
+
+**7. 결론적으로 유연성이 떨어진다.**
+
+위와 같은 문제점들이 있어서 "안티 패턴"이라고도 불리기도 한다.
+
+그럼 "싱글톤 패턴"은 사용하지 말아야할까?
