@@ -684,3 +684,84 @@ memberService2 = hello.core.member.MemberServiceImpl@3668d4
 싱글톤 패턴을 사용하기 위해 기본 코드를 작성할 필요가 없어졌으며 DIP, OCP도 잘 지켜졌다. 다른 문제들도 해결되었다. 즉, 싱글톤 패턴을 사용하면서 문제점은 다 없어진 것이 확인할 수 있다.
 
 > 스프링의 기본 빈 등록 방식은 싱글톤이지만, 싱글톤 방식만 지원하는 것은 아니다. 경우에 따라, 고객의 요청이 올 때마다 객체를 생성하여 처리하는 방식도 선택할 수 있다.
+
+
+# 싱글톤 방식의 주의점
+
+싱글톤 패턴이든, 스프링 같은 싱글톤 컨테이너를 사용하든, 객체 인스턴스를 하나만 생성해서 공유하는 싱글톤 방식은 여러 클라이언트가 하나의 같은 객체 인스턴스를 공유하기 때문에 싱글톤 객체는 상태를 유지(stateful)하게 설계하면 안된다.
+
+> 무상태(stateless)로 설계해야 한다!
+
+- 특정 클라이언트에 의존적인 필드가 있으면 안된다.
+
+- 특정 클라이언트가 값을 변경할 수 있는 필드가 있으면 안된다!
+
+- 가급적 읽기만 가능해야 한다.
+
+- 필드 대신에 자바에서 공유되지 않는, 지역변수, 파라미터, ThreadLocal 등을 사용해야 한다.
+
+stateful 하게 작성된 코드를 살펴보자.
+
+```java
+...
+public class StatefulService {
+
+    private int price;
+
+    public void order(String name, int price) {
+        System.out.println("name = " + name + ", price = " + price);
+        this.price = price;
+    }
+
+    public int getPrice() {
+        return price;
+    }
+}
+```
+
+매우 단순한 서비스다. 해당 서비스를 이용해보자.
+
+```java
+...
+class StatefulServiceTest {
+
+    @Test
+    void statefulServiceSingleton(){
+         ApplicationContext ac = new AnnotationConfigApplicationContext(TestConfig.class);
+
+        StatefulService statefulService1 = ac.getBean(StatefulService.class);
+        StatefulService statefulService2 = ac.getBean(StatefulService.class);
+
+        // ThreadA : A사용자가 10000원 주문
+        statefulService1.order("userA", 10000);
+        // ThreadB : B사용자가 20000원 주문
+        statefulService2.order("userB", 20000);
+
+        // A 사용자의 주문 금액을 조회
+        int price = statefulService1.getPrice();
+        System.out.println("userA price = " + price);
+
+        // 원하는 값을 10000원이지만 20000원이 나온다.
+        Assertions.assertThat(statefulService1.getPrice()).isEqualTo(20000);
+    }
+
+    @Configuration
+    static class TestConfig{
+
+        @Bean
+        public StatefulService statefulService(){
+            return new StatefulService();
+        }
+    }
+}
+```
+
+매우 치명적인 결과를 볼 수 있다.
+
+실제 상황으로 예를 들어보자.
+
+고객A가 10000원짜리 제품을 카드로 결제하였다. 근데 주문 결과를 보니 20000원이 결제되었다! 고객은 화가 났고 뭐 이딴 서비스가 있냐하면서 문의 메일이 들어온다. 그리고 고객은 이제 해당 서비스를 사용하지 않는다.
+
+이처럼 싱글톤 방식에서 가장 주의해야하는 것은 상태(state)를 유지(stateful)하게 설계하는 것이 아니라 무상태(stateless)로 설계해야한다.
+
+> 실무에서는 복잡한 상황에서 발생되며 문제가 발생할 경우 해결하기 매우 어렵다. 나중에 문제를 만들지 않기 위해 객체의 상태를 꼭 무상태(stateless)로 설계하자.
