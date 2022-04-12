@@ -774,3 +774,211 @@ userA price = 20000 <<< ?!
 이처럼 싱글톤 방식에서 가장 주의해야하는 것은 상태(state)를 유지(stateful)하게 설계하는 것이 아니라 무상태(stateless)로 설계해야한다.
 
 > 실무에서는 복잡한 상황에서 발생되며 문제가 발생할 경우 해결하기 매우 어렵다. 나중에 문제를 만들지 않기 위해 객체의 상태를 꼭 무상태(stateless)로 설계하자.
+
+# @Configuration과 싱글톤
+
+AppConfig class 를 보면 다음과 같은 문제가 있는 것을 볼 수 있다.
+
+```java
+...
+@Configuration
+public class AppConfig {
+
+    @Bean
+    public MemberService memberService(){
+        return new MemberServiceImpl(memberRepository());
+    }
+
+    @Bean
+    public OrderService orderService(){
+        return new OrderServiceImpl(memberRepository(), discountPolicy());
+    }
+
+    @Bean
+    public MemberRepository memberRepository(){
+        return new MemoryMemberRepository();
+    }
+...
+```
+
+memberService 빈을 만드는 코드를 보면 memberRepository() 를 호출한다.
+
+- 이 메서드를 호출하면 new MemoryMemberRepository() 를 호출한다.
+
+orderService 빈을 만드는 코드도 동일하게 memberRepository() 를 호출한다.
+
+- 이 메서드를 호출하면 new MemoryMemberRepository() 를 호출한다.
+
+결과적으로 각각 다른 2개의 MemoryMemberRepository 가 생성되면서 싱글톤이 깨지는 것 처럼 보인다.
+
+스프링 컨테이너는 이 문제를 어떻게 해결할까?
+
+다음과 같은 테스트 코드를 작성해보자.
+
+**MemberServiceImpl.java**
+
+```java
+...
+public class MemberServiceImpl implements MemberService{
+    ...
+    // 테스트 용도
+    public MemberRepository getMemberRepository(){
+        return memberRepository;
+    }
+}
+```
+
+**OrderServiceImpl.java**
+
+```java
+...
+public class OrderServiceImpl implements OrderService{
+    ...
+    // 테스트 용도
+    public MemberRepository getMemberRepository(){
+        return memberRepository;
+    }
+}
+```
+
+**테스트 코드**
+
+```java
+...
+public class ConfigurationSingtonTest {
+
+    @Test
+    void configurationTest(){
+         ApplicationContext ac = new AnnotationConfigApplicationContext(AppConfig.class);
+
+        MemberServiceImpl memberService = ac.getBean("memberService", MemberServiceImpl.class);
+        OrderServiceImpl orderService = ac.getBean("orderService", OrderServiceImpl.class);
+        MemberRepository memberRepository = ac.getBean("memberRepository", MemberRepository.class);
+
+        MemberRepository memberRepository1 = memberService.getMemberRepository();
+        MemberRepository memberRepository2 = orderService.getMemberRepository();
+
+        // 모두 같은 인스턴스를 참조하고 있다.
+        System.out.println("memberService -> memberRepository = " + memberRepository1);
+        System.out.println("orderService -> memberRepository = " + memberRepository2);
+        System.out.println("memberRepository = " + memberRepository);
+
+        Assertions.assertThat(memberService.getMemberRepository()).isSameAs(memberRepository);
+        Assertions.assertThat(orderService.getMemberRepository()).isSameAs(memberRepository);
+    }
+}
+```
+
+**결과**
+
+```cmd
+memberService -> memberRepository = hello.core.member.MemoryMemberRepository@61ce23ac
+orderService -> memberRepository = hello.core.member.MemoryMemberRepository@61ce23ac
+memberRepository = hello.core.member.MemoryMemberRepository@61ce23ac
+```
+
+확인해보면 memberRepository 인스턴스는 모두 같은 인스턴스가 공유되어 사용된다.
+
+응? AppConfig의 자바 코드를 보면 분명히 각각 2번 new MemoryMemberRepository 호출해서 다른
+인스턴스가 생성되어야 하는데?
+
+AppConfig에서 호출이 제대로 되지 않는건가?
+
+AppConfig class 에서 다음과 같이 출력해보자.
+
+```java
+...
+@Configuration
+public class AppConfig {
+
+    @Bean
+    public MemberService memberService() {
+        System.out.println("Call AppConfig.memberService");
+        return new MemberServiceImpl(memberRepository());
+    }
+
+    @Bean
+    public OrderService orderService() {
+        System.out.println("Call AppConfig.orderService");
+        return new OrderServiceImpl(memberRepository(), discountPolicy());
+    }
+
+    @Bean
+    public MemberRepository memberRepository() {
+        System.out.println("Call AppConfig.memberRepository");
+        return new MemoryMemberRepository();
+    }
+    ...
+}
+```
+
+**테스트 코드**
+
+```java
+...
+public class ConfigurationSingtonTest {
+    ...
+    @Test
+    void AppConfigTest() {
+        ApplicationContext ac = new AnnotationConfigApplicationContext(AppConfig.class);
+
+        AppConfig bean = ac.getBean(AppConfig.class);
+        System.out.println("bean = " + bean.getClass());
+    }
+}
+```
+
+결과를 보기 전에 한번 예상해보자.
+
+실제 코드를 순서대로 실행하면 memberService(), orderService() 에서 memberReopsitory() 를 사용하므로 다음과 같이 나온다고 예상할 수 있다.
+(필요한 결과만 추출하여 작성)
+
+```cmd
+Call AppConfig.memberService
+Call AppConfig.memberRepository
+Call AppConfig.orderService
+Call AppConfig.memberRepository
+Call AppConfig.memberRepository
+bean = class hello.core.AppConfig
+```
+
+그럼 실제 결과 값을 확인해보자.
+
+**결과**
+
+```cmd
+Call AppConfig.memberService
+Call AppConfig.memberRepository
+Call AppConfig.orderService
+bean = class hello.core.AppConfig$$EnhancerBySpringCGLIB$$6f837f94
+```
+
+예상과는 다르게 이미 생성된 객체는 더이상 생성되지 않으며 AppConfig 의 class 를 확인해보니 class 명에 xxxCGLIB가 붙으면서 상당히 복잡해진 것을 확인할 수 있다.
+
+이게 무엇일까?
+
+스프링은 CGLIB라는 바이트코드 조작 라이브러리를 사용해서 AppConfig
+클래스를 상속받은 임의의 다른 클래스를 만들고, 그 다른 클래스를 스프링 빈으로 등록한다.
+
+말보단 코드로 살펴보자. 실제로는 더욱 복잡하겠지만 대략적인 CGLIB 라이브러리의 로직은 다음과 같을 것이다.
+
+```java
+@Bean
+public MemberRepository memberRepository() {
+
+ if (memoryMemberRepository가 이미 스프링 컨테이너에 등록되어 있으면?) {
+ return 스프링 컨테이너에서 찾아서 반환;
+ } else { //스프링 컨테이너에 없으면
+ 기존 로직을 호출해서 MemoryMemberRepository를 생성하고 스프링 컨테이너에 등록
+ return 반환
+ }
+}
+```
+
+있으면 찾아서 반환하고 없으면 새로 만든다. 즉, 싱글톤을 보장해준다는 것이다. 이러한 역활을 @Configuration 에서 해준다는 것을 확인할 수 있다.
+
+그렇다면 @Configuration 을 없애면 어떻게 될까?
+
+없애도 스프링 컨테이너에 스프링 빈이 등록되어 돌아간다. 다만 위에서 예상한 것처럼 의존관계 주입이 필요해서 메서드(memberRepository()과 같은 메서드)를 직접 호출할 때 싱글톤을 보장하지 않는다.
+
+> 결론 : 스프링 설정 정보에는 @Configuration 을 사용하자:)
