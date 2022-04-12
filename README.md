@@ -643,3 +643,44 @@ public class SingletonService {
 위와 같은 문제점들이 있어서 "안티 패턴"이라고도 불리기도 한다.
 
 그럼 "싱글톤 패턴"은 사용하지 말아야할까?
+
+# 싱글톤 컨테이너
+
+여기서 스프링을 사용해야하는 이유가 또 나온다.
+
+위에 적힌 문제점을 다 해결하면서 싱글톤의 장점만 가져올 수 있는 스프링 컨테이너를 사용하면 된다.
+
+다음 테스트 코드를 보자.
+
+```java
+...
+public class SingletonTest {
+    ...
+    @Test
+    @DisplayName("스프링 컨테이너 싱글톤")
+    void springContainer(){
+        ApplicationContext ac = new AnnotationConfigApplicationContext(AppConfig.class);
+
+        MemberService memberService1 = ac.getBean("memberService", MemberService.class);
+        MemberService memberService2 = ac.getBean("memberService", MemberService.class);
+        // 참조값이 같은 것을 확인
+        System.out.println("memberService1 = " + memberService1);
+        System.out.println("memberService2 = " + memberService2);
+        // memberService1 != memberService2
+        assertThat(memberService1).isSameAs(memberService2);
+    }
+}
+```
+
+**결과**
+
+```cmd
+memberService1 = hello.core.member.MemberServiceImpl@3668d4
+memberService2 = hello.core.member.MemberServiceImpl@3668d4
+```
+
+스프링 컨테이너에 등록된 동일한 객체(스프링 빈)를 서로 다른 요청으로 가져와서 참조값을 비교해보았다. 결과를 보면 참조값이 동일하는 것을 볼 수 있다.
+
+싱글톤 패턴을 사용하기 위해 기본 코드를 작성할 필요가 없어졌으며 DIP, OCP도 잘 지켜졌다. 다른 문제들도 해결되었다. 즉, 싱글톤 패턴을 사용하면서 문제점은 다 없어진 것이 확인할 수 있다.
+
+> 스프링의 기본 빈 등록 방식은 싱글톤이지만, 싱글톤 방식만 지원하는 것은 아니다. 경우에 따라, 고객의 요청이 올 때마다 객체를 생성하여 처리하는 방식도 선택할 수 있다.
