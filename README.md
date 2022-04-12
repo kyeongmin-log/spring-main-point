@@ -756,7 +756,16 @@ class StatefulServiceTest {
 }
 ```
 
-매우 치명적인 결과를 볼 수 있다.
+**결과**
+
+```cmd
+name = userA, price = 10000
+name = userB, price = 20000
+
+userA price = 20000 <<< ?!
+```
+
+?! 매우 치명적인 결과를 볼 수 있다.
 
 실제 상황으로 예를 들어보자.
 
