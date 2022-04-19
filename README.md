@@ -982,3 +982,115 @@ public MemberRepository memberRepository() {
 없애도 스프링 컨테이너에 스프링 빈이 등록되어 돌아간다. 다만 위에서 예상한 것처럼 의존관계 주입이 필요해서 메서드(memberRepository()과 같은 메서드)를 직접 호출할 때 싱글톤을 보장하지 않는다.
 
 > 결론 : 스프링 설정 정보에는 @Configuration 을 사용하자:)
+
+# 컴포넌트 스캔과 의존관계 자동 주입
+
+지금까지는 AppConfig을 이용하여 수동으로 스프링 빈을 등록했었다. 하지만 실제 서비스를 만들 때는 등록해야할 빈이 수십, 수백개가 되므로 일일히 등록하기도 귀찮고 하다보면 누락되는 경우가 발생할 가능성이 생긴다.
+
+이러한 문제점을 해결하기 위해 스프링을 빈을 자동으로 등록해보자.
+
+기존 코드는 그대로 두고 AutoAppConfig 클래스를 하나 만들어서 다음과 같이 작성하였다.
+
+```java
+...
+@Configuration
+@ComponentScan(
+        excludeFilters = @Filter(type = FilterType.ANNOTATION, classes = Configuration.class)
+)
+public class AutoAppConfig {
+}
+```
+
+보면 @ComponentScan 해당 애노테이션을 이용하여 컴포넌트가 붙은 클래스를 자동으로 스프링 컨테이너에 등록시켜준다.
+> 기존 코드를 제거하지 않으므로 excludeFilters을 이용하여 Configuration이 붙은 클래스는 스프링 빈에 등록되지 않게 필터를 걸어두었다.
+
+다음으로 스프링 컨테이너에 등록할 클래스에 @Componet를 붙여준다.
+
+등록할 스프링 빈 목록
+- MemoryMemberRepository
+- RateDiscountPolicy
+- MemberServiceImpl
+- OrderServiceImpl
+
+**예시. MemoryMemberRepository.java**
+```java
+...
+@Component
+public class MemoryMemberRepository implements MemberRepository {
+    ...
+}
+```
+
+이렇게 붙여주면 AutoAppConfig에서 자동으로 컴포넌트를 스캔하여 스프링 빈으로 등록해준다.
+
+하지만 이렇게 할 경우 한 가지 문제가 발생한다.
+
+바로 의존 관계주입이 안되어있다는 것이다. 기존 코드에서는
+
+**AppConfig.java**
+```java
+...
+    @Bean
+    public OrderService orderService(){
+        return new OrderServiceImpl(memberRepository(), discountPolicy());
+    }
+...
+```
+
+이런 식으로 의존관계를 주입하였는데 바뀐 코드는 설정에 아무것도 적지 않으므로 이런 식이 불가능하다. 그럼 어떻게 해야할까?
+
+자동으로 의존관계를 주입해주는 @Autowired 라는 애노테이션을 생성자에 적어주면 된다.
+
+의존 관계 주입이 필요한 클래스
+- MemberServiceImpl
+- OrderServiceImpl
+
+**예시. MemberServiceImpl.java**
+```java
+...
+@Component
+public class MemberServiceImpl implements MemberService{
+
+    private final MemberRepository memberRepository;
+
+    @Autowired // == ac.getBean(MemberRepository.class)
+    public MemberServiceImpl(MemberRepository memberRepository) {
+        this.memberRepository = memberRepository;
+    }
+    ...
+}
+```
+
+OrderServiceImpl에도 동일하게 붙여준다. 자, 이러면 의존관계 주입도 자동으로 된다.
+
+다음으로 테스트를 진행해보자. 테스트 코드는 다음과 같다.
+
+```java
+...
+public class AutoAppConfigTest {
+
+    @Test
+    void basicScan() {
+        AnnotationConfigApplicationContext ac = new AnnotationConfigApplicationContext(AutoAppConfig.class);
+
+        MemberService memberService = ac.getBean(MemberService.class);
+        assertThat(memberService).isInstanceOf(MemberService.class);
+    }
+}
+```
+
+**결과(필요한 내용만 작성)**
+```cmd
+Creating shared instance of singleton bean 'autoAppConfig'
+Creating shared instance of singleton bean 'rateDiscountPolicy'
+Creating shared instance of singleton bean 'memberServiceImpl'
+Creating shared instance of singleton bean 'memoryMemberRepository'
+Autowiring by type from bean name 'memberServiceImpl' via constructor to bean named 'memoryMemberRepository'
+Creating shared instance of singleton bean 'orderServiceImpl'
+Autowiring by type from bean name 'orderServiceImpl' via constructor to bean named 'memoryMemberRepository'
+Autowiring by type from bean name 'orderServiceImpl' via constructor to bean named 'rateDiscountPolicy'
+```
+
+결과를 확인해보면 @Componet를 붙인 클래스들이 싱글톤으로 등록된 것을 확인할 수 있으며, @Autowired를 통해 어떻게 의존관계 주입이 되었는지까지 로그로 나오는 것을 확인할 수 있다.
+
+이제 일일히 스프링 빈 등록과 의존관계 주입을 하지 않아도 된다!
